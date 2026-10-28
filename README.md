@@ -1,6 +1,6 @@
 # Copybara Reforged
 
-<!-- Banner placement reserved. -->
+![Copybara Reforged banner with a capybara scribe writing by candlelight](assets/copybara-reforged-banner.webp)
 
 Copybara Reforged copies saved chat tabs and settings between World of Warcraft characters. It continues the original Copybara addon by MickeyPickey.
 
@@ -24,7 +24,7 @@ You can transfer settings through the addon or use its `!COPYBARA:` import/expor
 
 A tester reported Export rejecting a saved profile with "Invalid fields in chat window 1." The validation failure is under investigation.
 
-Version `1.1.2-reforged-dev.1` is a development preview targeting Retail 12.1.5. Offline checks do not establish compatibility in-game, in combat, with taint, with options widgets, or with logout/reload persistence. Classic client files retain historical interface declarations and are unverified.
+The project targets World of Warcraft Retail and Forever. Version `1.1.2-reforged-dev.1` is a development preview targeting Retail 12.1.5; Forever compatibility has not been verified. Offline checks do not establish compatibility in-game, in combat, with taint, with options widgets, or with logout/reload persistence.
 
 ## Developer details
 
