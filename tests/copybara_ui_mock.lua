@@ -2,6 +2,7 @@
 -- Uses the supplied bridge fixture and actual bundled AceGUI widget bodies.
 local root = assert(arg[1], "repository root required")
 local baseline = assert(arg[2], "read-only current-base root required")
+local nativeBaseline = assert(arg[3], "read-only dev.3 base root required")
 local oldArg = arg
 arg = {
    root .. "/Copybara/Copybara.lua",
@@ -29,7 +30,7 @@ local function info(key, option)
    return {[1] = key, option = option}
 end
 
-local function fresh(mode)
+local function fresh(mode, hostMode)
    local s = H.build(mode, false)
    s.count, s.trace, s.bindings = {}, {}, {}
    s.beforeInitialize = function(a)
@@ -95,6 +96,7 @@ local function fresh(mode)
          end
       end
    end
+   if hostMode then s.ui.configureHost(hostMode) end
    s.start()
    local a, u = s.a, s.ui
    s.config = a:GetConfig()
@@ -132,6 +134,149 @@ local function watchSourceList(s)
 end
 
 for _, mode in ipairs({"modern", "legacy"}) do
+   for _, hostMode in ipairs({"opaque", "transparent"}) do
+      test(mode .. "/native-view/" .. hostMode, function()
+         local s = fresh(mode, hostMode)
+         local u, panel = s.ui, s.panel
+         local listCalls = watchSourceList(s)
+         local host, background, other = u.host, u.hostTexture, u.otherCategory
+         local hostBefore, backgroundBefore, otherBefore =
+            clone(host), clone(background), clone(other)
+         local saved, reads = clone(s.saved), clone(s.reads)
+
+         check(panel:GetParent() == host, "canvas not hosted")
+         check(background.properties.SetColorTexture[4] ==
+            (hostMode == "opaque" and 1 or 0), "wrong host fixture alpha")
+         s.show()
+
+         local function view()
+            check(panel.properties.SetBackdrop == nil
+               and panel.properties.SetBackdropColor == nil
+               and panel.properties.SetColorTexture == nil,
+               "owned panel painted a canvas")
+
+            local textures, mascot = 0
+            for _, node in ipairs(u.nodes) do
+               if node.parent == panel and node.kind == "Texture" then
+                  textures = textures + 1
+                  mascot = node
+               end
+            end
+            check(textures == 1, "extra owned canvas texture")
+            check(mascot:GetWidth() == 36 and mascot:GetHeight() == 36,
+               "mascot size changed")
+            same(mascot.properties.SetTexture, {
+               "Interface\\AddOns\\Copybara\\Media\\copybara-reforged-icon.tga",
+            }, "mascot texture changed")
+            same(mascot.properties.SetTexCoord, {0, 1, 0, 1},
+               "mascot cropped")
+            same(mascot.properties.SetVertexColor, {1, 1, 1, 1},
+               "mascot tinted")
+            check(mascot.properties.SetColorTexture == nil,
+               "mascot replaced with a color fill")
+
+            for _, key in ipairs({"copy", "import", "export"}) do
+               local button = u.button(panel, s.args[key].name)
+               check(button.template == "UIPanelButtonNoTooltipTemplate",
+                  "owned action did not use pinned native template")
+               check(button.Text ~= nil
+                  and button:GetFontString() == button.Text
+                  and button.Text:GetText() == s.args[key].name,
+                  "native template text unavailable or replaced")
+               same(button.nativeFonts, {
+                  "GameFontNormal", "GameFontHighlight", "GameFontDisable",
+               }, "native template font contract changed")
+               check(button:GetWidth() == 104 and button:GetHeight() == 22,
+                  "owned native button size changed")
+               check(button.properties.SetBackdrop == nil
+                  and button.properties.SetBackdropColor == nil
+                  and button.properties.SetBackdropBorderColor == nil
+                  and button.properties.SetHighlightTexture == nil
+                  and button.properties.SetPushedTexture == nil,
+                  "owned action overrode native chrome")
+               check(type(button:GetScript("OnClick")) == "function"
+                  and type(button:GetScript("OnShow")) == "function"
+                  and type(button:GetScript("OnMouseDown")) == "function"
+                  and type(button:GetScript("OnMouseUp")) == "function",
+                  "action binding replaced native lifecycle scripts")
+               for _, part in ipairs({"Left", "Middle", "Right"}) do
+                  same(button[part].properties.SetTexture, {
+                     "Interface\\Buttons\\UI-Panel-Button-Up",
+                  }, "native button did not return to normal state")
+               end
+            end
+
+            same(host, hostBefore, "owned view changed host")
+            same(background, backgroundBefore, "owned view changed host surface")
+            same(other, otherBefore, "owned view changed another category")
+         end
+         view()
+
+         -- Exercise the explicit state model without executing Blizzard source.
+         local apply = u.button(panel, s.args.copy.name)
+         u.fire(apply, "OnMouseDown")
+         for _, part in ipairs({"Left", "Middle", "Right"}) do
+            same(apply[part].properties.SetTexture, {
+               "Interface\\Buttons\\UI-Panel-Button-Down",
+            }, "native press state unavailable")
+         end
+         u.fire(apply, "OnMouseUp")
+         apply:Disable()
+         for _, part in ipairs({"Left", "Middle", "Right"}) do
+            same(apply[part].properties.SetTexture, {
+               "Interface\\Buttons\\UI-Panel-Button-Disabled",
+            }, "native disabled state unavailable")
+         end
+         apply:Enable()
+         view()
+
+         local nodes, acquires, counts, hooks =
+            #u.nodes, clone(u.acquires), clone(u.gui.counts), u.hooks
+         check(listCalls() == 1, "initial source list not built once")
+         s.ui.type("retained host-mode draft", false)
+         for i = 1, 3 do
+            s.ui.type("pending host-mode draft", true)
+            panel:Hide()
+            check(s.rawInput.get() == "pending host-mode draft",
+               "host-mode hide lost pending text")
+            panel:SetSize(680 + i * 20, 660 + i * 10)
+            panel:Show()
+            check(s.editor:GetText() == "pending host-mode draft"
+               and not s.editor.editBox:HasFocus(),
+               "host-mode reopen changed draft or stole focus")
+            check(s.source:GetValue() == "Source",
+               "host-mode reopen lost source selection")
+            check(s.envArg.CreateSettingsPanel(s.a) == panel,
+               "host-mode reopen replaced panel")
+            check(listCalls() == 1, "host-mode reopen rebuilt unchanged list")
+            check(#u.nodes == nodes and u.hooks == hooks,
+               "host-mode reopen created native objects/hooks")
+            same(u.acquires, acquires, "host-mode reopen reacquired widgets")
+            same(u.gui.counts, counts, "host-mode reopen created widgets")
+            view()
+         end
+
+         same(s.saved, saved, "host-mode lifecycle changed profiles")
+         same(s.reads, reads, "host-mode lifecycle captured chat state")
+         same(s.count, {}, "host-mode lifecycle dispatched backend work")
+         check(#s.calls == 0 and u.canvas + u.legacy == 1
+            and s.eventRegistrations == 1,
+            "host-mode lifecycle mutated chat or repeated registration")
+
+         -- Native action text remains discoverable by the existing dispatcher.
+         s.click("export")
+         local exported = s.rawInput.get()
+         check(exported:sub(1, 10) == "!COPYBARA:"
+            and s.editor:GetText() == exported
+            and s.editor.editBox.selection == exported,
+            "host-mode native Export binding/selection failed")
+         same(s.serialized, s.config, "host-mode Export changed saved source")
+         check(#s.calls == 0, "host-mode Export mutated native chat")
+         view()
+         s.clean()
+      end)
+   end
+
    test(mode .. "/registration-and-hidden-actions", function()
       local s = fresh(mode)
       local u, a, p = s.ui, s.a, s.panel
@@ -617,7 +762,7 @@ for _, toc in ipairs({"Copybara.toc", "Copybara_Vanilla.toc", "Copybara_Wrath.to
       if toc == "Copybara.toc" then
          expected = replaceOnce(expected,
             "## Version: 1.1.2-reforged-dev.2",
-            "## Version: 1.1.2-reforged-dev.3")
+            "## Version: 1.1.2-reforged-dev.4")
       end
       check(read(root .. path) == expected,
          "TOC metadata/dependencies/order changed beyond UI insertion")
@@ -637,10 +782,73 @@ for _, path in ipairs({
       local expected = read(baseline .. path)
       if path == "/AGENTS.md" then
          expected = replaceOnce(expected,
-            "The current dev.2 package", "The current dev.3 package")
+            "The current dev.2 package", "The current dev.4 package")
       end
       check(read(root .. path) == expected,
          "protected source changed: " .. path)
+   end)
+end
+
+test("scope/native-view-only", function()
+   local old = read(nativeBaseline .. "/Copybara/SettingsUI.lua")
+   local oldAction = assert(old:match(
+      "local function Action%(parent, caption, primary%)[%s%S]-\nend"
+   ), "missing pinned Action helper")
+   local action = [[local function Action(parent, caption)
+   local button = CreateFrame(
+      "Button", nil, parent, "UIPanelButtonNoTooltipTemplate"
+   )
+   button:SetSize(104, 22)
+   button:SetText(caption)
+   return button
+end]]
+   local expected = replaceOnce(old, oldAction, action)
+   expected = replaceOnce(expected, [[   local background = panel:CreateTexture(nil, "BACKGROUND")
+   background:SetAllPoints()
+   background:SetColorTexture(0.14, 0.09, 0.16, 1)
+
+]], "")
+   expected = replaceOnce(expected,
+      "   local apply = Action(panel, args.copy.name, true)",
+      "   local apply = Action(panel, args.copy.name)")
+   check(read(root .. "/Copybara/SettingsUI.lua") == expected,
+      "view differs beyond exact Action replacement and canvas deletion")
+end)
+
+for _, path in ipairs({
+   "/Copybara/Copybara.lua",
+   "/Copybara/Copybara.toc",
+   "/Copybara/Copybara_Vanilla.toc",
+   "/Copybara/Copybara_Wrath.toc",
+   "/tests/copybara_bridge_mock.lua",
+   "/tests/copybara_codec_roundtrip.lua",
+   "/tests/fixtures/Copybara-1.1.2-original.lua",
+   "/tests/fixtures/Copybara-reforged-dev1.lua",
+   "/AGENTS.md", "/NOTICE.txt", "/README.md",
+}) do
+   test("scope/native-base-unchanged" .. path, function()
+      local expected = read(nativeBaseline .. path)
+      if path == "/Copybara/Copybara.toc" then
+         expected = replaceOnce(expected,
+            "## Version: 1.1.2-reforged-dev.3",
+            "## Version: 1.1.2-reforged-dev.4")
+      elseif path == "/AGENTS.md" then
+         expected = replaceOnce(expected,
+            "The current dev.3 package", "The current dev.4 package")
+      elseif path == "/README.md" then
+         expected = replaceOnce(expected,
+            "Version `1.1.2-reforged-dev.3`", "Version `1.1.2-reforged-dev.4`")
+         expected = replaceOnce(expected,
+            "For UI binding and scope checks, pass an unchanged checkout of commit `2221826747e4814993f7bea60caeb112996cc1f0` as the second argument:",
+            "For UI binding and scope checks, pass unchanged checkouts of commit `2221826747e4814993f7bea60caeb112996cc1f0` (dev.2) and `9aec831c1482798b6cdf2937e85fe2b408996f2d` (dev.3) as the second and third arguments:")
+         expected = replaceOnce(expected,
+            "lua tests/copybara_ui_mock.lua . ../copybara-dev2-baseline",
+            "lua tests/copybara_ui_mock.lua . ../copybara-dev2-baseline ../copybara-dev3-baseline")
+         expected = replaceOnce(expected,
+            "Offline validation covers 43 UI", "Offline validation covers 59 UI")
+      end
+      check(read(root .. path) == expected,
+         "native revision changed protected file: " .. path)
    end)
 end
 

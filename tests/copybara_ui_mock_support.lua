@@ -90,8 +90,18 @@ function M.install(root, E, libs, s, mode)
    function N:SetSize(w, h) self:SetWidth(w); self:SetHeight(h) end
    function N:SetFrameLevel(value) self.level = value end
    function N:GetFrameLevel() return self.level end
-   function N:Enable() self.enabled = true end
-   function N:Disable() self.enabled = false end
+   function N:Enable()
+      if not self.enabled then
+         self.enabled = true
+         fire(self, "OnEnable")
+      end
+   end
+   function N:Disable()
+      if self.enabled then
+         self.enabled = false
+         fire(self, "OnDisable")
+      end
+   end
    function N:IsEnabled() return self.enabled end
    function N:SetValue(value)
       if self.value ~= value then
@@ -180,11 +190,13 @@ function M.install(root, E, libs, s, mode)
    local templates = {
       BackdropTemplate = true, GameTooltipTemplate = true,
       UIDropDownMenuTemplate = true, UIPanelButtonTemplate = true,
+      UIPanelButtonNoTooltipTemplate = true,
       UIPanelScrollFrameTemplate = true,
    }
    E.CreateFrame = function(kind, name, parent, template)
       assert(not template or templates[template], "unknown template")
       local node = make(kind, name, parent or E.UIParent)
+      node.template = template
       if template == "UIDropDownMenuTemplate" then
          for _, suffix in ipairs({"Left", "Middle", "Right", "Text"}) do
             make(suffix == "Text" and "FontString" or "Texture",
@@ -193,6 +205,36 @@ function M.install(root, E, libs, s, mode)
          make("Button", name .. "Button", node)
       elseif template == "UIPanelScrollFrameTemplate" then
          make("Slider", name .. "ScrollBar", node)
+      elseif template == "UIPanelButtonNoTooltipTemplate" then
+         assert(kind == "Button", "native button template on wrong frame type")
+         -- Explicit model of the supplied XML contract, not native rendering
+         -- or execution of downloaded Blizzard scripts.
+         node.Text = make("FontString", name and name .. "Text", node)
+         node:SetFontString(node.Text)
+         node.nativeFonts = {
+            "GameFontNormal", "GameFontHighlight", "GameFontDisable",
+         }
+         for _, key in ipairs({"Left", "Middle", "Right"}) do
+            node[key] = make("Texture", nil, node)
+         end
+         local function texture(state)
+            for _, key in ipairs({"Left", "Middle", "Right"}) do
+               node[key]:SetTexture(
+                  "Interface\\Buttons\\UI-Panel-Button-" .. state
+               )
+            end
+         end
+         local function up()
+            if node:IsEnabled() then texture("Up") end
+         end
+         node:SetScript("OnShow", up)
+         node:SetScript("OnMouseUp", up)
+         node:SetScript("OnMouseDown", function()
+            if node:IsEnabled() then texture("Down") end
+         end)
+         node:SetScript("OnDisable", function() texture("Disabled") end)
+         node:SetScript("OnEnable", function() texture("Up") end)
+         texture("Up")
       end
       return node
    end
@@ -260,12 +302,60 @@ function M.install(root, E, libs, s, mode)
       return oldDialog(...)
    end
 
+   function u.configureHost(which)
+      assert(which == "opaque" or which == "transparent",
+         "unknown simulated host background")
+      assert(not u.host, "simulated host already configured")
+
+      local host = E.CreateFrame("Frame", nil, E.UIParent)
+      host:SetSize(900, 760)
+      host:SetPoint("CENTER")
+
+      local background = host:CreateTexture(nil, "BACKGROUND")
+      background:SetAllPoints()
+      background:SetColorTexture(
+         0.08, 0.08, 0.08, which == "opaque" and 1 or 0
+      )
+
+      local other = E.CreateFrame("Frame", nil, host)
+      other:SetSize(640, 600)
+
+      -- Fail on named host mutations, including otherwise unsupported APIs.
+      -- This is a rejection guard, not a successful missing-API stub.
+      local function protect(node, methods)
+         for method in string.gmatch(methods, "%S+") do
+            local name = method
+            node[name] = function()
+               error("unexpected host mutation: " .. name)
+            end
+         end
+      end
+      local frameMutations = [[
+         SetParent SetPoint SetAllPoints ClearAllPoints
+         SetWidth SetHeight SetSize SetAlpha SetScale
+         SetBackdrop SetBackdropColor SetBackdropBorderColor
+         SetFrameLevel SetFrameStrata SetScript HookScript Show Hide
+         CreateTexture CreateFontString
+      ]]
+      protect(host, frameMutations)
+      protect(other, frameMutations)
+      protect(background, [[
+         SetPoint SetAllPoints ClearAllPoints SetWidth SetHeight SetSize
+         SetAlpha SetColorTexture SetTexture SetTexCoord SetVertexColor
+         Show Hide
+      ]])
+
+      u.host, u.hostTexture, u.otherCategory = host, background, other
+      E.SettingsPanel, E.InterfaceOptionsFrame = host, host
+   end
+
    function u.registration(which)
       E.Settings, E.InterfaceOptions_AddCategory = nil, nil
       if which == "modern" then
          E.Settings = {
             RegisterCanvasLayoutCategory = function(frame, name)
                u.canvas = u.canvas + 1
+               if u.host then frame:SetParent(u.host) end
                local category = {ID = 123, frame = frame, name = name}
                function category:GetID() return self.ID end
                u.category = category
@@ -279,6 +369,7 @@ function M.install(root, E, libs, s, mode)
       elseif which == "legacy" then
          E.InterfaceOptions_AddCategory = function(frame)
             u.legacy = u.legacy + 1
+            if u.host then frame:SetParent(u.host) end
             u.legacyFrame = frame
          end
       else

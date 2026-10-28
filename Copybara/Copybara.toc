@@ -1,7 +1,7 @@
 ## Interface: 120105
 ## Title: Copybara Reforged
 ## Author: MickeyPickey
-## Version: 1.1.2-reforged-dev.3
+## Version: 1.1.2-reforged-dev.4
 ## DefaultState: Enabled
 ## SavedVariables: CopybaraDB
 ## Notes: Addon to copy your chat tabs and settings from one character to another.

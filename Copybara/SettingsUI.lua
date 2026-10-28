@@ -33,38 +33,12 @@ local function Text(parent, font, value, color)
    return text
 end
 
-local function Action(parent, caption, primary)
-   local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
-   button:SetSize(104, 28)
-   button:SetBackdrop({
-      bgFile = "Interface\\Buttons\\WHITE8X8",
-      edgeFile = "Interface\\Buttons\\WHITE8X8",
-      edgeSize = 1,
-   })
-   if primary then
-      button:SetBackdropColor(0.34, 0.20, 0.33, 1)
-      button:SetBackdropBorderColor(unpack(amber))
-   else
-      button:SetBackdropColor(0.22, 0.14, 0.24, 1)
-      button:SetBackdropBorderColor(0.49, 0.36, 0.43, 1)
-   end
-
-   local label = Text(button, "GameFontNormal", caption)
-   label:SetAllPoints()
-   label:SetJustifyH("CENTER")
-   label:SetJustifyV("MIDDLE")
-   button:SetFontString(label)
+local function Action(parent, caption)
+   local button = CreateFrame(
+      "Button", nil, parent, "UIPanelButtonNoTooltipTemplate"
+   )
+   button:SetSize(104, 22)
    button:SetText(caption)
-
-   local highlight = button:CreateTexture(nil, "HIGHLIGHT")
-   highlight:SetAllPoints()
-   highlight:SetColorTexture(0.91, 0.68, 0.38, 0.16)
-   button:SetHighlightTexture(highlight)
-
-   local pushed = button:CreateTexture(nil, "ARTWORK")
-   pushed:SetAllPoints()
-   pushed:SetColorTexture(0.91, 0.68, 0.38, 0.23)
-   button:SetPushedTexture(pushed)
    return button
 end
 
@@ -92,10 +66,6 @@ function Env.CreateSettingsPanel(addon)
    local panel = CreateFrame("Frame")
    panel:Hide()
    panel.name = addon.displayName
-
-   local background = panel:CreateTexture(nil, "BACKGROUND")
-   background:SetAllPoints()
-   background:SetColorTexture(0.14, 0.09, 0.16, 1)
 
    local icon = panel:CreateTexture(nil, "ARTWORK")
    icon:SetSize(36, 36)
@@ -135,7 +105,7 @@ function Env.CreateSettingsPanel(addon)
    source:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -122)
    source.frame:Show()
 
-   local apply = Action(panel, args.copy.name, true)
+   local apply = Action(panel, args.copy.name)
    apply:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -18, -120)
 
    local sourceStatus = Text(panel, "GameFontHighlightSmall", "", amber)
