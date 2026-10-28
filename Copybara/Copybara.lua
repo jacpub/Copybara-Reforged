@@ -66,6 +66,12 @@ local anchors = {
    BOTTOMLEFT = true, BOTTOM = true, BOTTOMRIGHT = true,
 }
 
+local function numericFieldReason(value)
+   if type(value) ~= "number" then return "type" end
+   if not finite(value) then return "finite" end
+   return "range"
+end
+
 function private.ValidateConfig(self, config, expected)
    if expected == nil then
       expected = Constants and Constants.ChatFrameConstants
@@ -81,41 +87,90 @@ function private.ValidateConfig(self, config, expected)
    for i = 1, count do
       local f = config[i]
       local valid = plain(f)
+      local diagnostic
+      local function invalid(field, value, reason)
+         valid = false
+         -- All callers supply literal schema fields or keys from fixed lists.
+         -- Never format the rejected value or an input-supplied key.
+         if not diagnostic then
+            diagnostic = " field=" .. field .. " type=" .. type(value)
+               .. " reason=" .. reason .. "."
+         end
+      end
+      if not valid then
+         invalid("window", f, type(f) == "table" and "shape" or "type")
+      end
       if valid then
          for _, key in ipairs({"width", "height", "fontSize"}) do
             local value = f[key]
-            if not finite(value) or value < 0 then valid = false end
+            if not finite(value) or value < 0 then
+               invalid(key, value, numericFieldReason(value))
+            end
          end
          for _, key in ipairs({"r", "g", "b", "alpha"}) do
             local value = f[key]
             if not finite(value) or value < 0 or value > 1 then
-               valid = false
+               invalid(key, value, numericFieldReason(value))
             end
          end
-         if f.name ~= nil and type(f.name) ~= "string" then valid = false end
+         if f.name ~= nil and type(f.name) ~= "string" then
+            invalid("name", f.name, "type")
+         end
          if type(f.parentName) ~= "string" or f.parentName == "" then
-            valid = false
+            invalid("parentName", f.parentName,
+               type(f.parentName) == "string" and "shape" or "type")
          end
          if not flag(f.shown) or not flag(f.locked)
-            or not flag(f.uninteractable) then valid = false end
+            or not flag(f.uninteractable) then
+            if not flag(f.shown) then
+               invalid("shown", f.shown,
+                  type(f.shown) == "number"
+                     and numericFieldReason(f.shown) or "type")
+            elseif not flag(f.locked) then
+               invalid("locked", f.locked,
+                  type(f.locked) == "number"
+                     and numericFieldReason(f.locked) or "type")
+            else
+               invalid("uninteractable", f.uninteractable,
+                  type(f.uninteractable) == "number"
+                     and numericFieldReason(f.uninteractable) or "type")
+            end
+         end
          local docked = f.docked
          if docked ~= nil and type(docked) ~= "boolean"
             and not (finite(docked) and docked >= 0
                and docked <= count and docked % 1 == 0) then
-            valid = false
+            local reason = numericFieldReason(docked)
+            if finite(docked) and docked >= 0 and docked <= count then
+               reason = "shape"
+            end
+            invalid("docked", docked, reason)
          end
          if f.point ~= nil and f.point ~= false then
             if type(f.point) ~= "string" or not anchors[f.point]
                or not finite(f.xOfs) or not finite(f.yOfs) then
-               valid = false
+               if type(f.point) ~= "string" then
+                  invalid("point", f.point, "type")
+               elseif not anchors[f.point] then
+                  invalid("point", f.point, "shape")
+               elseif not finite(f.xOfs) then
+                  invalid("xOfs", f.xOfs, numericFieldReason(f.xOfs))
+               else
+                  invalid("yOfs", f.yOfs, numericFieldReason(f.yOfs))
+               end
             end
          else
-            if f.xOfs ~= nil and not finite(f.xOfs) then valid = false end
-            if f.yOfs ~= nil and not finite(f.yOfs) then valid = false end
+            if f.xOfs ~= nil and not finite(f.xOfs) then
+               invalid("xOfs", f.xOfs, numericFieldReason(f.xOfs))
+            end
+            if f.yOfs ~= nil and not finite(f.yOfs) then
+               invalid("yOfs", f.yOfs, numericFieldReason(f.yOfs))
+            end
          end
       end
       if not valid then
-         return fail(self, "Invalid fields in chat window " .. i .. ".")
+         return fail(self, "Invalid fields in chat window " .. i .. "."
+            .. diagnostic)
       end
       local messages = arrayLength(f.DefaultMessages)
       local channels = arrayLength(f.DefaultChannels)

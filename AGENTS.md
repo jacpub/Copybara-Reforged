@@ -6,7 +6,7 @@ Preserve the installed Copybara folder, CopybaraDB saved variables, Copybara glo
 
 Use Ponytail Full for coding and review, and Humanizer for public copy. Route substantive implementation and simplification through the existing Bluehost workflow. Keep the urgent Export fix separate from branding and scope changes.
 
-Use the focused Lua mock and real-codec checks documented in README.md for source changes. The current dev.1 package targets Retail only. Verify Forever selectors, interface, APIs, package contents, and actual-client behavior before preparing or advertising a Forever build. Do not install addons or create release tags without authorization.
+Use the focused Lua mock and real-codec checks documented in README.md for source changes. The current dev.2 package targets Retail only. Verify Forever selectors, interface, APIs, package contents, and actual-client behavior before preparing or advertising a Forever build. Do not install addons or create release tags without authorization.
 
 # Workflow check
 

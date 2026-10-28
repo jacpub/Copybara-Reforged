@@ -785,5 +785,325 @@ for _, contract in ipairs({"modern-precedence", "legacy-fallback"}) do
    end)
 end
 
+-- Diagnostic regressions: synthetic fixtures only; UNRUN proposal.
+-- arg[2] is the unchanged pinned current core, before this diagnostic patch.
+local baselinePath = assert(arg and arg[2],
+   "INPUT GAP: unchanged pinned current core path in arg[2]")
+local baselineHandle = assert(io.open(baselinePath, "rb"))
+local baselineSource = baselineHandle:read("*a")
+baselineHandle:close()
+check(baselineSource and baselineSource:byte(1) ~= 27,
+   "Expected baseline Lua source, not bytecode")
+check(baselineSource:find(
+   'return fail(self, "Invalid fields in chat window " .. i .. ".")',
+   1, true), "Expected unchanged baseline generic field failure")
+
+local function diagnosticStart(s, text)
+   local proposed = source
+   source = text
+   local ok, why = pcall(s.start)
+   source = proposed
+   check(ok, "diagnostic fixture initialization failed: " .. tostring(why))
+end
+
+local function fieldMessage(id, field, valueType, reason)
+   return "Error: Invalid fields in chat window " .. id .. ". field="
+      .. field .. " type=" .. valueType .. " reason=" .. reason .. "."
+end
+
+-- Missing raw saved layout is a synthetic compatibility fixture.
+-- It does not establish actual Edit Mode behavior or the user's live values.
+for _, mode in ipairs({"modern", "legacy"}) do
+   for _, id in ipairs({1, 10}) do
+      for _, missing in ipairs({"width", "height", "both"}) do
+         test(mode .. "/diagnostic/capture/" .. id .. "/" .. missing, function()
+            local results = {}
+            for version = 1, 2 do
+               local s = build(mode, false)
+               s.E.GetChatWindowSavedDimensions = function(window)
+                  if window == id then
+                     if missing == "width" then return nil, 200 end
+                     if missing == "height" then return 400, nil end
+                     return nil, nil
+                  end
+                  return 400, 200
+               end
+               s.E.GetChatWindowSavedPosition = function()
+                  return nil, nil, nil
+               end
+               diagnosticStart(s, version == 1 and baselineSource or source)
+               local config = s.a:GetConfig()
+               check(config[id].point == nil and config[id].xOfs == nil
+                  and config[id].yOfs == nil,
+                  "capture invented absent saved position")
+               check(config[id].width ==
+                     (missing == "height" and 400 or nil),
+                  "capture changed raw saved width")
+               check(config[id].height ==
+                     (missing == "width" and 200 or nil),
+                  "capture changed raw saved height")
+               s.saved.profiles.Source.chatConfig = config
+               local input = s.a.Options.constructor.args.transmitInputBox
+               input.set({}, "preserve diagnostic input")
+               s.serialized = nil
+               rejected(s, function() s.a:ExportConfig() end, config, 0)
+               check(s.serialized == nil,
+                  "invalid saved dimensions reached serialization")
+               results[version] = s.messages[1]
+            end
+            local generic = "Error: Invalid fields in chat window " .. id .. "."
+            check(results[1] == generic,
+               "baseline did not reproduce the original generic failure")
+            local field = missing == "height" and "height" or "width"
+            check(results[2] == fieldMessage(id, field, "nil", "type"),
+               "missing dimensions diagnostic changed or leaked data")
+            check(results[2]:sub(1, #generic) == generic,
+               "original diagnostic prefix changed")
+         end)
+      end
+   end
+end
+
+local secret = "PRIVATE_DIAGNOSTIC_SENTINEL\n|Hplayer:PRIVATE|h[PRIVATE]|h"
+local nan, infinity = 0/0, 1/0
+local diagnosticCases = {}
+local function diagnosticCase(label, mutate, field, valueType, reason)
+   diagnosticCases[#diagnosticCases + 1] = {
+      label = label, mutate = mutate, field = field,
+      valueType = valueType, reason = reason,
+   }
+end
+
+-- Each numeric failure is isolated from other invalid fields.
+for _, key in ipairs({"width", "height", "fontSize", "r", "g", "b", "alpha"}) do
+   local field = key
+   for _, item in ipairs({
+      {"nil", nil, "nil", "type"},
+      {"string", secret, "string", "type"},
+      {"boolean", false, "boolean", "type"},
+      {"table", {}, "table", "type"},
+      {"function", function() end, "function", "type"},
+      {"NaN", nan, "number", "finite"},
+      {"positive-infinity", infinity, "number", "finite"},
+      {"negative-infinity", -infinity, "number", "finite"},
+      {"negative", -1, "number", "range"},
+   }) do
+      local value, valueType, reason = item[2], item[3], item[4]
+      diagnosticCase(field .. "/" .. item[1], function(c)
+         c[10][field] = value
+      end, field, valueType, reason)
+   end
+end
+for _, key in ipairs({"r", "g", "b", "alpha"}) do
+   local field = key
+   diagnosticCase(field .. "/above-one", function(c)
+      c[10][field] = 2
+   end, field, "number", "range")
+end
+
+diagnosticCase("name/type", function(c) c[10].name = {} end,
+   "name", "table", "type")
+diagnosticCase("parent/type", function(c) c[10].parentName = false end,
+   "parentName", "boolean", "type")
+diagnosticCase("parent/empty", function(c) c[10].parentName = "" end,
+   "parentName", "string", "shape")
+
+for _, key in ipairs({"shown", "locked", "uninteractable"}) do
+   local field = key
+   for _, item in ipairs({
+      {"string", secret, "string", "type"},
+      {"range", 2, "number", "range"},
+      {"NaN", nan, "number", "finite"},
+      {"infinity", infinity, "number", "finite"},
+   }) do
+      local value, valueType, reason = item[2], item[3], item[4]
+      diagnosticCase(field .. "/" .. item[1], function(c)
+         c[10][field] = value
+      end, field, valueType, reason)
+   end
+end
+
+for _, item in ipairs({
+   {"string", secret, "string", "type"},
+   {"negative", -1, "number", "range"},
+   {"above-count", 11, "number", "range"},
+   {"fractional", 1.5, "number", "shape"},
+   {"NaN", nan, "number", "finite"},
+   {"infinity", infinity, "number", "finite"},
+}) do
+   local value, valueType, reason = item[2], item[3], item[4]
+   diagnosticCase("docked/" .. item[1], function(c)
+      c[10].docked = value
+   end, "docked", valueType, reason)
+end
+
+diagnosticCase("point/type", function(c) c[10].point = {} end,
+   "point", "table", "type")
+diagnosticCase("point/shape", function(c) c[10].point = secret end,
+   "point", "string", "shape")
+
+for _, anchored in ipairs({false, true}) do
+   for _, key in ipairs({"xOfs", "yOfs"}) do
+      local field = key
+      local values = {
+         {"string", secret, "string", "type"},
+         {"NaN", nan, "number", "finite"},
+         {"infinity", infinity, "number", "finite"},
+      }
+      if anchored then
+         values[#values + 1] = {"nil", nil, "nil", "type"}
+      end
+      for _, item in ipairs(values) do
+         local value, valueType, reason = item[2], item[3], item[4]
+         diagnosticCase("offset/" .. tostring(anchored) .. "/"
+            .. field .. "/" .. item[1], function(c)
+            c[10].point = anchored and "TOPLEFT" or false
+            c[10][field] = value
+         end, field, valueType, reason)
+      end
+   end
+end
+
+diagnosticCase("window/type", function(c) c[10] = secret end,
+   "window", "string", "type")
+diagnosticCase("window/metatable", function(c)
+   c[10] = setmetatable(c[10], {
+      __index = function() error("must not inspect rejected frame") end,
+      __tostring = function() error("must not stringify rejected frame") end,
+   })
+end, "window", "table", "shape")
+
+diagnosticCase("value/metatable", function(c)
+   c[10].width = setmetatable({}, {
+      __tostring = function() error("must not stringify rejected value") end,
+   })
+end, "width", "table", "type")
+
+-- Compound failures verify the original left-to-right reporting precedence.
+diagnosticCase("order/dimensions", function(c)
+   c[10].width, c[10].height, c[10].fontSize = nil, nil, nil
+end, "width", "nil", "type")
+diagnosticCase("order/colors", function(c)
+   c[10].r, c[10].g, c[10].alpha = 2, 2, 2
+end, "r", "number", "range")
+diagnosticCase("order/name-parent", function(c)
+   c[10].name, c[10].parentName = false, nil
+end, "name", "boolean", "type")
+diagnosticCase("order/flags", function(c)
+   c[10].shown, c[10].locked, c[10].uninteractable = secret, 2, {}
+end, "shown", "string", "type")
+diagnosticCase("order/point-offsets", function(c)
+   c[10].point, c[10].xOfs, c[10].yOfs = secret, nan, infinity
+end, "point", "string", "shape")
+diagnosticCase("order/offsets", function(c)
+   c[10].xOfs, c[10].yOfs = nan, infinity
+end, "xOfs", "number", "finite")
+diagnosticCase("order/fields-before-arrays", function(c)
+   c[10].width, c[10].DefaultMessages = nil, nil
+end, "width", "nil", "type")
+
+for _, mode in ipairs({"modern", "legacy"}) do
+   for _, item in ipairs(diagnosticCases) do
+      test(mode .. "/diagnostic/isolated/" .. item.label, function()
+         local s = build(mode, false)
+         s.start()
+         -- Production diagnostic code must not call tostring.
+         s.E.tostring = function() error("unexpected production tostring") end
+         local config = clone(assert(fixture))
+         -- Valid but private strings and an untrusted extra key must not leak.
+         config[10].name, config[10].parentName = secret, secret
+         config[10].DefaultChannels = {secret, 1}
+         config[10][secret] = secret
+         item.mutate(config)
+         s.saved.profiles.Source.chatConfig = config
+         s.serialized = nil
+         rejected(s, function() s.a:ExportConfig() end, config, 0)
+         check(s.messages[1] == fieldMessage(10, item.field,
+            item.valueType, item.reason),
+            "diagnostic was not the exact whitelist-only message")
+         check(not s.messages[1]:find("PRIVATE", 1, true),
+            "diagnostic leaked private content")
+         check(s.serialized == nil, "invalid field reached serialization")
+      end)
+   end
+
+   -- Late-frame invalid input must still stop before any native mutation.
+   for _, route in ipairs({"direct", "apply", "import"}) do
+      test(mode .. "/diagnostic/atomic/" .. route, function()
+         local s = build(mode, false)
+         s.start()
+         local config = clone(assert(fixture))
+         config[10].height = nil
+         s.saved.profiles.Source.chatConfig = config
+         local input = s.a.Options.constructor.args.transmitInputBox
+         input.set({}, route == "import" and s.encode(config) or secret)
+         local expectedLoads = route == "import" and 0 or 1
+         rejected(s, function()
+            if route == "direct" then s.a:LoadConfig(config)
+            elseif route == "apply" then
+               s.a.Options.constructor.args.copy.func({})
+            else s.a:ImportConfigString() end
+         end, config, expectedLoads)
+         check(s.messages[1] == fieldMessage(10, "height", "nil", "type"),
+            "atomic rejection diagnostic differed")
+      end)
+   end
+
+   -- Compare accepted contracts against the unchanged current validator.
+   for _, variant in ipairs({
+      "explicit", "zero-dimensions", "optional-name", "empty-name",
+      "nil-flags", "boolean-flags", "numeric-flags", "false-docking",
+      "true-docking", "zero-docking", "max-docking",
+      "nil-position", "false-position", "signed-offsets", "color-boundaries",
+   }) do
+      test(mode .. "/diagnostic/valid-differential/" .. variant, function()
+         local config = clone(assert(fixture))
+         local f = config[10]
+         if variant == "zero-dimensions" then f.width, f.height = 0, 0
+         elseif variant == "optional-name" then f.name = nil
+         elseif variant == "empty-name" then f.name = ""
+         elseif variant == "nil-flags" then
+            f.shown, f.locked, f.uninteractable = nil, nil, nil
+         elseif variant == "boolean-flags" then
+            f.shown, f.locked, f.uninteractable = true, false, true
+         elseif variant == "numeric-flags" then
+            f.shown, f.locked, f.uninteractable = 0, 1, 0
+         elseif variant == "false-docking" then f.docked = false
+         elseif variant == "true-docking" then f.docked = true
+         elseif variant == "zero-docking" then f.docked = 0
+         elseif variant == "max-docking" then f.docked = 10
+         elseif variant == "nil-position" then
+            f.point, f.xOfs, f.yOfs = nil, nil, nil
+         elseif variant == "false-position" then
+            f.point, f.xOfs, f.yOfs = false, nil, nil
+         elseif variant == "signed-offsets" then
+            f.xOfs, f.yOfs = -12, 24
+         elseif variant == "color-boundaries" then
+            f.r, f.g, f.b, f.alpha = 0, 1, 0, 1
+         end
+         local exports = {}
+         for version = 1, 2 do
+            local s = build(mode, false)
+            diagnosticStart(s, version == 1 and baselineSource or source)
+            local selected = clone(config)
+            s.saved.profiles.Source.chatConfig = selected
+            local before, saved = clone(selected), clone(s.saved)
+            exports[version] = s.a:GetExportString()
+            check(type(exports[version]) == "string",
+               "supported contract was rejected")
+            check(#s.messages == 0 and #s.calls == 0,
+               "valid export diagnosed or mutated native state")
+            same(s.serialized, config, "serialized valid fields changed")
+            same(selected, before, "valid export mutated selected config")
+            same(s.saved, saved, "valid export mutated profiles")
+            check(s.saved.profiles.Source.chatConfig == selected,
+               "valid export replaced source identity")
+         end
+         -- Token-codec bytes only; real-codec equality remains in its suite.
+         check(exports[1] == exports[2], "mock export bytes changed")
+      end)
+   end
+end
+
 print("Mock assertions passed: " .. total ..
    "; actual-client, in-game, combat and taint checks remain pending.")

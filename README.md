@@ -22,9 +22,9 @@ You can transfer settings through the addon or use its `!COPYBARA:` import/expor
 
 ## Development status
 
-A tester reported Export rejecting a saved profile with "Invalid fields in chat window 1." The validation failure is under investigation.
+A tester reported Export rejecting a saved profile with "Invalid fields in chat window 1." This preview adds the rejected field, Lua type, and reason to that message so the cause can be identified. Invalid settings remain rejected.
 
-The project targets World of Warcraft Retail and Forever. Version `1.1.2-reforged-dev.1` is a development preview targeting Retail 12.1.5; Forever compatibility has not been verified. Offline checks do not establish compatibility in-game, in combat, with taint, with options widgets, or with logout/reload persistence.
+The project targets World of Warcraft Retail and Forever. Version `1.1.2-reforged-dev.2` is a development preview targeting Retail 12.1.5; Forever compatibility has not been verified. Offline checks do not establish compatibility in-game, in combat, with taint, with options widgets, or with logout/reload persistence.
 
 ## Developer details
 
@@ -34,7 +34,7 @@ The project targets World of Warcraft Retail and Forever. Version `1.1.2-reforge
 From the repository root, with Lua 5.1 available:
 
 ```sh
-lua tests/copybara_bridge_mock.lua Copybara/Copybara.lua
+lua tests/copybara_bridge_mock.lua Copybara/Copybara.lua tests/fixtures/Copybara-reforged-dev1.lua
 ```
 
 The real-codec test uses the preserved original 1.1.2-release comparison fixture:
@@ -43,7 +43,7 @@ The real-codec test uses the preserved original 1.1.2-release comparison fixture
 lua tests/copybara_codec_roundtrip.lua . tests/fixtures/Copybara-1.1.2-original.lua
 ```
 
-Offline validation covers 372 mocked API/input cases, 24 real bundled-codec cases, and 46 Lua syntax checks, including the preserved original comparison fixture. The mocked suite covers modern/legacy API selection, profile identity, channel tuples, rejection before mutation, and parent/cycle handling. The codec suite uses the bundled LibSerialize and LibDeflate with synthetic data; chat application is intercepted. The existing inflater has no bounded-output-memory guarantee.
+Offline validation covers 648 mocked API/input cases, 24 real bundled-codec cases, and 47 Lua syntax checks, including the preserved comparison fixtures. The mocked suite covers modern/legacy API selection, profile identity, channel tuples, rejection before mutation, parent/cycle handling, and privacy-safe field diagnostics. The codec suite uses the bundled LibSerialize and LibDeflate with synthetic data; chat application is intercepted. The existing inflater has no bounded-output-memory guarantee.
 
 </details>
 
