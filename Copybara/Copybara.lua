@@ -330,7 +330,7 @@ function Copybara:OnInitialize()
    self.DB = LibStub("AceDB-3.0"):New(TocName .. "DB", self.Options.defaults)
    self.Options.DB = self.DB
    LibStub("AceConfig-3.0"):RegisterOptionsTable(self.displayName, self.Options.constructor)
-   self.optionsFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions(self.displayName, self.displayName)
+   self.optionsFrame = Env.CreateSettingsPanel(self)
 
    self:RegisterEvent("PLAYER_LOGOUT", "SaveConfig")
 end

@@ -24,7 +24,7 @@ You can transfer settings through the addon or use its `!COPYBARA:` import/expor
 
 A tester reported Export rejecting a saved profile with "Invalid fields in chat window 1." This preview adds the rejected field, Lua type, and reason to that message so the cause can be identified. Invalid settings remain rejected.
 
-The project targets World of Warcraft Retail and Forever. Version `1.1.2-reforged-dev.2` is a development preview targeting Retail 12.1.5; Forever compatibility has not been verified. Offline checks do not establish compatibility in-game, in combat, with taint, with options widgets, or with logout/reload persistence.
+The project targets World of Warcraft Retail and Forever. Version `1.1.2-reforged-dev.3` adds a Copybara-owned settings panel with the capybara scribe, saved-source selection, Apply, and a copyable import/export editor. It is a development preview targeting Retail 12.1.5; Forever compatibility has not been verified. The new panel still needs in-game visual, focus, scaling, combat/taint, and persistence testing.
 
 ## Developer details
 
@@ -43,7 +43,13 @@ The real-codec test uses the preserved original 1.1.2-release comparison fixture
 lua tests/copybara_codec_roundtrip.lua . tests/fixtures/Copybara-1.1.2-original.lua
 ```
 
-Offline validation covers 648 mocked API/input cases, 24 real bundled-codec cases, and 47 Lua syntax checks, including the preserved comparison fixtures. The mocked suite covers modern/legacy API selection, profile identity, channel tuples, rejection before mutation, parent/cycle handling, and privacy-safe field diagnostics. The codec suite uses the bundled LibSerialize and LibDeflate with synthetic data; chat application is intercepted. The existing inflater has no bounded-output-memory guarantee.
+For UI binding and scope checks, pass an unchanged checkout of commit `2221826747e4814993f7bea60caeb112996cc1f0` as the second argument:
+
+```sh
+lua tests/copybara_ui_mock.lua . ../copybara-dev2-baseline
+```
+
+Offline validation covers 43 UI binding/lifecycle cases, 648 mocked API/input cases, 24 real bundled-codec cases, and 50 Lua syntax checks, including the preserved comparison fixtures. The UI suite runs the bundled AceGUI dropdown/editor code with mocked native frames; it checks text commits, action dispatch, source refresh, reopening, and registration. The safety suite covers API selection, profile identity, channel tuples, rejection before mutation, parent/cycle handling, and privacy-safe field diagnostics. The codec suite uses bundled LibSerialize and LibDeflate with synthetic data; chat application is intercepted. The existing inflater has no bounded-output-memory guarantee.
 
 </details>
 

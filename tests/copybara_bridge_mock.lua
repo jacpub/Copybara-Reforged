@@ -8,6 +8,10 @@ assert(handle, why)
 local source = handle:read("*a")
 handle:close()
 assert(source and source:byte(1) ~= 27, "Expected Lua source, not bytecode")
+local uiRoot = arg[4] or "."
+local uiSupport = assert(loadfile(
+   uiRoot .. "/tests/copybara_ui_mock_support.lua"
+))()
 
 local function check(ok, message)
    assert(ok, message)
@@ -225,6 +229,7 @@ local function build(mode, empty)
                check(event == "PLAYER_LOGOUT" and method == "SaveConfig",
                   "logout save registration changed")
                s.registered = true
+               s.eventRegistrations = (s.eventRegistrations or 0) + 1
             end
             s.a = addon
             return addon
@@ -267,13 +272,17 @@ local function build(mode, empty)
       end,
    })
 
+   s.ui = uiSupport.install(uiRoot, E, libs, s, mode)
+
    function s.start()
+      s.ui.load(s.envArg)
       local chunk, message = loadstring(source, "@" .. path)
       assert(chunk, message)
       setfenv(chunk, E)
       chunk("Copybara", s.envArg)
       check(s.envArg.Addon == s.a and E.Copybara == s.a,
          "addon exports changed")
+      if s.beforeInitialize then s.beforeInitialize(s.a) end
       s.a:OnInitialize()
       check(s.registered and s.dbName == "CopybaraDB",
          "initialization incomplete")
@@ -321,6 +330,15 @@ local function test(name, fn)
    if not ok then error("FAIL [" .. name .. "]: " .. tostring(message), 0) end
    total = total + 1
    print("PASS [" .. name .. "]")
+end
+
+-- Export this suite's actual fixture only for the focused UI runner.
+-- Normal execution retains every existing case and assertion below.
+if arg[3] == "ui-fixture" then
+   return {
+      build = build, clone = clone, same = same, check = check,
+      calls = calls, restored = restored,
+   }
 end
 
 local fixture

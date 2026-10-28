@@ -30,4 +30,5 @@ External\EmbeddedLibs\LibSerialize\lib.xml
 #External\EmbeddedLibs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
 # Core files
+SettingsUI.lua
 Copybara.lua
