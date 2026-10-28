@@ -1,0 +1,28 @@
+Copybara Reforged -- development continuation
+
+Original Copybara author: MickeyPickey.
+Original project: https://github.com/MickeyPickey/Copybara
+Original distribution: https://www.curseforge.com/wow/addons/copybara
+Original CurseForge project ID: 715273.
+Supplied baseline: Copybara-1.1.2-release.zip, release dated 2023-09-06.
+Baseline archive SHA256:
+9f975f1b0949e2b960a51ec5b52cf5ab7b5e227ae281b58d03e103920b4b8c6a
+
+This continuation preserves original attribution. It does not claim authorship
+of the original addon, logo or bundled libraries. No project-wide replacement
+license is asserted for inherited material. The supplied archive had no core
+license file; retain applicable original notices and any independently verified
+grant rather than replacing them with a newly invented permissive license.
+
+Embedded third-party source and notices remain in Copybara/External/EmbeddedLibs.
+They include Ace3, CallbackHandler, LibStub, LibCompress, LibDeflate and
+LibSerialize. Preserve their individual attribution and license terms. The
+bundled LibDeflate LICENSE.txt and inline LibSerialize/other notices are retained.
+
+Display name changes to Copybara Reforged. Technical identities Copybara,
+CopybaraDB and !COPYBARA: remain to preserve installed and saved-data compatibility.
+The inherited CurseForge project ID is recorded only as original provenance,
+not as this continuation's download/update project identifier.
+
+This is a development preview. Offline tests do not certify actual-client,
+combat, taint, widget lifecycle or reload/logout persistence behavior.

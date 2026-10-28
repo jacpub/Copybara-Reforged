@@ -1,0 +1,2 @@
+# Preserve the reviewed source and embedded notice bytes across checkouts.
+* -text

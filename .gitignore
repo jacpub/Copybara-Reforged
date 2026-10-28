@@ -1,0 +1,21 @@
+# Local files and generated output are not public source.
+.env
+.env.*
+!.env.example
+*.zip
+*.7z
+*.log
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+node_modules/
+__pycache__/
+.venv/
+build/
+dist/
+WTF/
+Cache/
+SavedVariables/
